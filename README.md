@@ -5,26 +5,28 @@ tool-specific adapters (Claude Code, Codex, Pi), and a dependency-free
 validator — so an AI agent can build a UI prototype without ever drifting
 into real backend work.
 
-Not published to a registry yet. The method itself — the contract's design,
-the pilot it was built against, and the full architecture proposal — is
-developed in [koshhi/mock-creator-development](https://github.com/koshhi/mock-creator-development)
-(private); this repo is the standalone, installable package built from it.
+This is the working copy — changes are made here first. The published,
+installable version lives at
+[koshhi/mock-creator](https://github.com/koshhi/mock-creator) (public); this
+repo ([mock-creator-development](../../README.md)) is private, where the
+method itself gets designed and piloted. Syncing changes over is currently a
+manual copy, not automated.
 
 ## Usage
 
-From the repo you want to install into:
+From any repo, once a change here has been copied over and pushed:
 
 ```sh
 npx github:koshhi/mock-creator init
 ```
 
-Or, from a local clone:
+Locally, straight from this working copy:
 
 ```sh
 node path/to/mock-creator/bin/init.mjs init
 ```
 
-Or, packed:
+Or, once packed:
 
 ```sh
 npm pack   # produces mock-creator-mock-creator-<version>.tgz
