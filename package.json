@@ -1,0 +1,14 @@
+{
+  "name": "@mock-creator/mock-creator",
+  "version": "0.1.0",
+  "description": "Installer for the mock-create prototyping method: contract, tool adapters, and validator.",
+  "type": "module",
+  "bin": {
+    "mock-creator": "./bin/init.mjs"
+  },
+  "files": [
+    "bin",
+    "templates"
+  ],
+  "license": "MIT"
+}
