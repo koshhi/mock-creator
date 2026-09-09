@@ -89,11 +89,19 @@ what actually happens when you run it.
 Run this inside your project's folder:
 
 ```sh
-npx github:koshhi/mock-creator init
+npx github:koshhi/mock-creator init -i
 ```
 
-That's it — it writes everything you need straight into your project. No
-extra setup, nothing else to run first.
+`-i` walks you through it: which AI coding tools you use, and what to do if
+`CLAUDE.md`/`AGENTS.md` already exist.
+
+For a non-interactive install instead — everything gets installed with
+sensible defaults and anything else gets reported, no prompts — drop the
+flag:
+
+```sh
+npx github:koshhi/mock-creator init
+```
 
 ## Usage
 
@@ -104,7 +112,7 @@ extra setup, nothing else to run first.
 | `init` | Writes the contract, adapters, and validator into the current directory. A fresh install (nothing exists yet) writes everything immediately. If anything already exists, it defaults to a dry run — shows what it would create, what's already identical, and a diff for anything diverged — and writes nothing until you re-run with `--write`. `--write` only creates missing files; it never touches one that already exists, identical or diverged. |
 | `init --adapters claude,codex,pi` | Only installs the files a given set of AI coding tools needs, instead of everything: `claude` for Claude Code, `codex` for the OpenAI Codex CLI, `pi` for Pi. `AGENTS.md` is shared by `codex` and `pi` (both discover it) and is written once even if both are requested. |
 | `init --merge` | For when `CLAUDE.md` or `AGENTS.md` already exists in your project for some other reason. Without `--merge`, `init` just shows you what it *would* add to that file. With `--merge`, it appends its own block — clearly marked off with `<!-- mock-creator:start -->` / `<!-- mock-creator:end -->` comments — to the end of your existing file, without touching anything else in it. On a later reinstall, if the package's block has moved on, `--merge` updates just that marked block in place, leaving the rest of the file exactly as you left it. |
-| `init --interactive` (or `-i`) | Walks you through the same decisions instead of making you re-run flags. It asks which AI coding tools you use and installs only what they need, then, for each of `CLAUDE.md`/`AGENTS.md` that already exists, asks whether to append (or update) the mock-creator block right there. Decline and it prints the block so you can paste it in yourself instead — nothing gets written to that file. Requires a real interactive terminal; run without one and it just falls back to the normal dry run. |
+| `init --interactive` (or `-i`) | Walks you through the same decisions instead of making you re-run flags. It asks which AI coding tools you use and installs only what they need, then, for each of `CLAUDE.md`/`AGENTS.md` that already exists, asks whether to append (or update) the mock-creator block right there. Decline and it prints the block so you can paste it in yourself instead — nothing gets written to that file. Requires a real interactive terminal; run without one and it just falls back to the normal dry run. Passing `--write` or `--merge` alongside it has no effect — the prompts decide instead. |
 | `check-install` | Reads the digests `init` recorded in `.mock-creator/VERSION.json` and reports each installed file as unchanged, drifted (edited locally since install), outdated (the package's own template moved on since install), or missing. |
 
 ### What gets installed
