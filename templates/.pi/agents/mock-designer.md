@@ -30,3 +30,8 @@ per package in this exact form, then stop — do not fake the behavior without i
 Everything you build reads from fixtures via the data-access functions described
 in .mock-creator/CONTRACT.md. Treat the fixture's shape as the real API contract, not a
 convenience object for one component.
+
+When you create or touch a prototype's own `package.json`, wire the
+validator into its scripts: `"mocks:check": "node <relative-path>/.mock-creator/bin/check.mjs"`,
+adjusting the relative path to reach the repo root. This is a text edit —
+you don't need `bash` for it.

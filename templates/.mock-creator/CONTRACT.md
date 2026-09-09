@@ -50,6 +50,12 @@ every prototype in the repository, but the repository root itself never holds
 a prototype's `src/data/` or `src/mocks/` directly; a resource sitting loose
 at the root has no scan boundary and no clear owner.
 
+That `package.json` must wire the validator into its scripts —
+`"mocks:check": "node <relative-path>/.mock-creator/bin/check.mjs"`, with the
+relative path adjusted to reach the repo root from the prototype's own
+directory. This is a text edit to `package.json`, not a shell command —
+`mock-designer` has no `bash` and doesn't need any to do this.
+
 ## Data contract
 
 1. Every resource has a schema (Zod or a TypeScript type) under `src/mocks/schemas/`.
