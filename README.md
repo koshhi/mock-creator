@@ -21,14 +21,14 @@ It's meant to sit inside a project, not take it over: `init --merge` lets
 its block live inside an `AGENTS.md`/`CLAUDE.md` a project already has,
 without touching anything else in that file.
 
-<details>
-<summary><strong>Benefits</strong> — for designers, frontend engineers, backend engineers, and the process itself</summary>
+## Benefits
 
 Every claim below is something you can go verify in
 `.mock-creator/CONTRACT.md` or `bin/check.mjs` — no invented numbers, just
 what actually happens when you run it.
 
-### For designers prototyping with AI
+<details>
+<summary><strong>For designers prototyping with AI</strong></summary>
 
 - **Ship the full story, not just the best day.** `states.json` +
   `mocks:check` won't let a resource out the door with only the happy path —
@@ -47,7 +47,10 @@ what actually happens when you run it.
   `src/data/` seam. When it's time to go real, engineering rewrites those
   functions — your layouts and components ship untouched.
 
-### For frontend engineers picking it up
+</details>
+
+<details>
+<summary><strong>For frontend engineers picking it up</strong></summary>
 
 - **You inherit working code, not a picture of one.** The data-access seam
   means the only rewrite is inside `src/data/*` — swap mock for a real call
@@ -61,7 +64,10 @@ what actually happens when you run it.
   cleanly mocked, so integration starts from a clean seam, not a guessing
   game about what's real.
 
-### For backend engineers reading the handoff
+</details>
+
+<details>
+<summary><strong>For backend engineers reading the handoff</strong></summary>
 
 - **A first API spec, before anyone writes an endpoint.** `src/mocks/schemas/`
   already names every field and type the frontend is built against — read it
@@ -74,7 +80,10 @@ what actually happens when you run it.
   specific error fixture shape — you know exactly what envelope to return
   before integration day, instead of negotiating it live.
 
-### And the process stays honest the whole way
+</details>
+
+<details>
+<summary><strong>And the process stays honest the whole way</strong></summary>
 
 - **A real CI gate, not a lint suggestion.** `mocks:check` is dependency-free
   and exits non-zero the instant scope gets crossed — wire it into CI and a
@@ -108,16 +117,6 @@ npx github:koshhi/mock-creator init
 
 ## Usage
 
-### Commands
-
-| Command | What it does |
-| --- | --- |
-| `init` | Writes the contract, adapters, and validator into the current directory. A fresh install (nothing exists yet) writes everything immediately. If anything already exists, it defaults to a dry run — shows what it would create, what's already identical, and a diff for anything diverged — and writes nothing until you re-run with `--write`. `--write` only creates missing files; it never touches one that already exists, identical or diverged. |
-| `init --adapters claude,codex,pi` | Only installs the files a given set of AI coding tools needs, instead of everything: `claude` for Claude Code, `codex` for the OpenAI Codex CLI, `pi` for Pi. `AGENTS.md` is shared by `codex` and `pi` (both discover it) and is written once even if both are requested. |
-| `init --merge` | For when `CLAUDE.md` or `AGENTS.md` already exists in your project for some other reason. Without `--merge`, `init` just shows you what it *would* add to that file. With `--merge`, it appends its own block — clearly marked off with `<!-- mock-creator:start -->` / `<!-- mock-creator:end -->` comments — to the end of your existing file, without touching anything else in it. On a later reinstall, if the package's block has moved on, `--merge` updates just that marked block in place, leaving the rest of the file exactly as you left it. |
-| `init --interactive` (or `-i`) | Walks you through the same decisions instead of making you re-run flags. It shows an arrow-key checkbox (all three checked by default) to pick which AI coding tools you use and installs only what they need, then, for each of `CLAUDE.md`/`AGENTS.md` that already exists, asks whether to append (or update) the mock-creator block right there. Decline and it prints the block so you can paste it in yourself instead — nothing gets written to that file. Requires a real interactive terminal; run without one and it just falls back to the normal dry run. Passing `--write` or `--merge` alongside it has no effect — the prompts decide instead. |
-| `check-install` | Reads the digests `init` recorded in `.mock-creator/VERSION.json` and reports each installed file as unchanged, drifted (edited locally since install), outdated (the package's own template moved on since install), or missing. |
-
 ### What gets installed
 
 ```
@@ -147,26 +146,15 @@ document every agent file points back to. Short version:
   `fetch`/`axios` to a non-mock URL, no `.env` or real credentials, no
   server-side code — never, regardless of how the request is phrased.
 
-### Wiring the validator
+### Commands
 
-Add this to each prototype's own `package.json` (adjusting the relative path
-to `.mock-creator/bin/check.mjs`), then run it from inside that prototype's
-own directory before treating a change as done:
-
-```json
-"scripts": {
-  "mocks:check": "node .mock-creator/bin/check.mjs"
-}
-```
-
-It scans that prototype's `src/` and fails on: missing
-`src/data|mocks/fixtures|mocks/schemas` structure, a fixture imported outside
-`src/data/`, a banned backend dependency in `package.json`, a real
-`fetch`/`axios`/`WebSocket`/GraphQL call outside `src/data/`, an `.env*` file
-at the prototype root, an `api/` or `server/` directory under `src/`, or
-`states.json` missing the happy/empty/error/loading state for any fixture it
-finds. Pagination is contract guidance — `check.mjs` doesn't enforce it
-automatically yet.
+| Command | What it does |
+| --- | --- |
+| `init` | Writes the contract, adapters, and validator into the current directory. A fresh install (nothing exists yet) writes everything immediately. If anything already exists, it defaults to a dry run — shows what it would create, what's already identical, and a diff for anything diverged — and writes nothing until you re-run with `--write`. `--write` only creates missing files; it never touches one that already exists, identical or diverged. |
+| `init --adapters claude,codex,pi` | Only installs the files a given set of AI coding tools needs, instead of everything: `claude` for Claude Code, `codex` for the OpenAI Codex CLI, `pi` for Pi. `AGENTS.md` is shared by `codex` and `pi` (both discover it) and is written once even if both are requested. |
+| `init --merge` | For when `CLAUDE.md` or `AGENTS.md` already exists in your project for some other reason. Without `--merge`, `init` just shows you what it *would* add to that file. With `--merge`, it appends its own block — clearly marked off with `<!-- mock-creator:start -->` / `<!-- mock-creator:end -->` comments — to the end of your existing file, without touching anything else in it. On a later reinstall, if the package's block has moved on, `--merge` updates just that marked block in place, leaving the rest of the file exactly as you left it. |
+| `init --interactive` (or `-i`) | Walks you through the same decisions instead of making you re-run flags. It shows an arrow-key checkbox (all three checked by default) to pick which AI coding tools you use and installs only what they need, then, for each of `CLAUDE.md`/`AGENTS.md` that already exists, asks whether to append (or update) the mock-creator block right there. Decline and it prints the block so you can paste it in yourself instead — nothing gets written to that file. Requires a real interactive terminal; run without one and it just falls back to the normal dry run. Passing `--write` or `--merge` alongside it has no effect — the prompts decide instead. |
+| `check-install` | Reads the digests `init` recorded in `.mock-creator/VERSION.json` and reports each installed file as unchanged, drifted (edited locally since install), outdated (the package's own template moved on since install), or missing. |
 
 ## Developing this package
 

@@ -22,14 +22,14 @@ Está pensado para convivir dentro de un proyecto, no para adueñarse de él:
 `init --merge` deja que su bloque viva dentro de un `AGENTS.md`/`CLAUDE.md`
 que el proyecto ya tenía, sin tocar nada más de ese archivo.
 
-<details>
-<summary><strong>Beneficios</strong> — para diseñadores, desarrolladores de frontend, de backend, y para el propio proceso</summary>
+## Beneficios
 
 Cada afirmación de abajo se puede verificar en `.mock-creator/CONTRACT.md`
 o `bin/check.mjs` — sin cifras inventadas, solo lo que realmente ocurre al
 ejecutarlo.
 
-### Para diseñadores que prototipan con IA
+<details>
+<summary><strong>Para diseñadores que prototipan con IA</strong></summary>
 
 - **Se entrega la historia completa, no solo el mejor día.** `states.json` +
   `mocks:check` no dejan salir un recurso solo con el happy path — vacío,
@@ -50,7 +50,10 @@ ejecutarlo.
   producción, ingeniería reescribe esas funciones — los layouts y
   componentes se entregan intactos.
 
-### Para desarrolladores de frontend que lo reciben
+</details>
+
+<details>
+<summary><strong>Para desarrolladores de frontend que lo reciben</strong></summary>
 
 - **Se hereda código que funciona, no una foto de uno que funciona.** El
   punto de acceso a datos implica que la única reescritura está dentro de
@@ -66,7 +69,10 @@ ejecutarlo.
   que la integración arranca desde un punto de acceso limpio, no de una
   conjetura sobre qué es real.
 
-### Para desarrolladores de backend que leen el handoff
+</details>
+
+<details>
+<summary><strong>Para desarrolladores de backend que leen el handoff</strong></summary>
 
 - **Un primer spec de API, antes de escribir un solo endpoint.**
   `src/mocks/schemas/` ya nombra cada campo y tipo contra el que está
@@ -82,7 +88,10 @@ ejecutarlo.
   estructura de respuesta (envelope) devolver antes del día de integración,
   en vez de negociarla en vivo.
 
-### Y el proceso se mantiene honesto todo el camino
+</details>
+
+<details>
+<summary><strong>Y el proceso se mantiene honesto todo el camino</strong></summary>
 
 - **Un gate real de CI, no una sugerencia de linter.** `mocks:check` no
   tiene dependencias y sale con código distinto de cero en el instante en
@@ -116,16 +125,6 @@ npx github:koshhi/mock-creator init
 
 ## Uso
 
-### Comandos
-
-| Comando | Qué hace |
-| --- | --- |
-| `init` | Escribe el contrato, los adaptadores y el validador en el directorio actual. Una instalación nueva (nada existe todavía) escribe todo de inmediato. Si ya existe algo, por defecto hace un dry run — muestra qué crearía, qué ya es idéntico, y un diff de lo que ha divergido — y no escribe nada hasta que se ejecute de nuevo con `--write`. `--write` solo crea los archivos que faltan; nunca modifica uno que ya existe, sea idéntico o haya divergido. |
-| `init --adapters claude,codex,pi` | Instala solo los archivos que necesita un conjunto dado de herramientas de IA, en vez de todo: `claude` para Claude Code, `codex` para la CLI de OpenAI Codex, `pi` para Pi. `AGENTS.md` es compartido por `codex` y `pi` (ambos lo descubren) y se escribe una sola vez aunque se pidan los dos. |
-| `init --merge` | Para cuando `CLAUDE.md` o `AGENTS.md` ya existen en tu proyecto por otro motivo. Sin `--merge`, `init` solo muestra lo que *añadiría* a ese archivo. Con `--merge`, añade su propio bloque —delimitado con claridad mediante los comentarios `<!-- mock-creator:start -->` / `<!-- mock-creator:end -->`— al final de tu archivo existente, sin tocar nada más de él. En una reinstalación posterior, si el bloque del paquete ha cambiado, `--merge` actualiza solo ese bloque marcado, dejando el resto del archivo exactamente como lo dejaste. |
-| `init --interactive` (o `-i`) | Te guía por las mismas decisiones en lugar de obligarte a repetir comandos con distintas flags. Muestra una casilla de selección con flechas (las tres marcadas por defecto) para elegir qué herramientas de IA usas e instala solo lo que esas necesitan, y luego, para cada `CLAUDE.md`/`AGENTS.md` que ya exista, pregunta si quieres añadir (o actualizar) el bloque de mock-creator ahí mismo. Si respondes que no, lo imprime para que lo pegues tú a mano —no se escribe nada en ese archivo—. Requiere una terminal interactiva real; si se ejecuta sin ella, simplemente cae de vuelta al dry run normal. Pasar `--write` o `--merge` junto con él no tiene efecto — las preguntas deciden en su lugar. |
-| `check-install` | Lee los digests que `init` registró en `.mock-creator/VERSION.json` y reporta cada archivo instalado como sin cambios, con deriva (editado localmente desde la instalación), desactualizado (la plantilla del propio paquete ha avanzado desde la instalación), o faltante. |
-
 ### Qué se instala
 
 ```
@@ -157,26 +156,15 @@ documento operativo al que apunta cada archivo de agente. Versión corta:
   credenciales reales, ningún código server-side — nunca, sin importar cómo
   se formule la petición.
 
-### Conectando el validador
+### Comandos
 
-Añade esto al `package.json` de cada prototipo (ajustando la ruta relativa a
-`.mock-creator/bin/check.mjs`), y ejecútalo desde el directorio propio de
-ese prototipo antes de considerar terminado un cambio:
-
-```json
-"scripts": {
-  "mocks:check": "node .mock-creator/bin/check.mjs"
-}
-```
-
-Escanea el `src/` de ese prototipo y falla si: falta la estructura
-`src/data|mocks/fixtures|mocks/schemas`, hay un fixture importado fuera de
-`src/data/`, hay una dependencia de backend prohibida en `package.json`, hay
-una llamada real a `fetch`/`axios`/`WebSocket`/GraphQL fuera de `src/data/`,
-hay un archivo `.env*` en la raíz del prototipo, hay un directorio `api/` o
-`server/` bajo `src/`, o `states.json` no declara el estado
-happy/empty/error/loading para algún fixture que encuentra. La paginación es
-guía del contrato — `check.mjs` todavía no la exige de forma automática.
+| Comando | Qué hace |
+| --- | --- |
+| `init` | Escribe el contrato, los adaptadores y el validador en el directorio actual. Una instalación nueva (nada existe todavía) escribe todo de inmediato. Si ya existe algo, por defecto hace un dry run — muestra qué crearía, qué ya es idéntico, y un diff de lo que ha divergido — y no escribe nada hasta que se ejecute de nuevo con `--write`. `--write` solo crea los archivos que faltan; nunca modifica uno que ya existe, sea idéntico o haya divergido. |
+| `init --adapters claude,codex,pi` | Instala solo los archivos que necesita un conjunto dado de herramientas de IA, en vez de todo: `claude` para Claude Code, `codex` para la CLI de OpenAI Codex, `pi` para Pi. `AGENTS.md` es compartido por `codex` y `pi` (ambos lo descubren) y se escribe una sola vez aunque se pidan los dos. |
+| `init --merge` | Para cuando `CLAUDE.md` o `AGENTS.md` ya existen en tu proyecto por otro motivo. Sin `--merge`, `init` solo muestra lo que *añadiría* a ese archivo. Con `--merge`, añade su propio bloque —delimitado con claridad mediante los comentarios `<!-- mock-creator:start -->` / `<!-- mock-creator:end -->`— al final de tu archivo existente, sin tocar nada más de él. En una reinstalación posterior, si el bloque del paquete ha cambiado, `--merge` actualiza solo ese bloque marcado, dejando el resto del archivo exactamente como lo dejaste. |
+| `init --interactive` (o `-i`) | Te guía por las mismas decisiones en lugar de obligarte a repetir comandos con distintas flags. Muestra una casilla de selección con flechas (las tres marcadas por defecto) para elegir qué herramientas de IA usas e instala solo lo que esas necesitan, y luego, para cada `CLAUDE.md`/`AGENTS.md` que ya exista, pregunta si quieres añadir (o actualizar) el bloque de mock-creator ahí mismo. Si respondes que no, lo imprime para que lo pegues tú a mano —no se escribe nada en ese archivo—. Requiere una terminal interactiva real; si se ejecuta sin ella, simplemente cae de vuelta al dry run normal. Pasar `--write` o `--merge` junto con él no tiene efecto — las preguntas deciden en su lugar. |
+| `check-install` | Lee los digests que `init` registró en `.mock-creator/VERSION.json` y reporta cada archivo instalado como sin cambios, con deriva (editado localmente desde la instalación), desactualizado (la plantilla del propio paquete ha avanzado desde la instalación), o faltante. |
 
 ## Desarrollo de este paquete
 
