@@ -82,43 +82,24 @@ what actually happens when you run it.
 
 ## Installation
 
+Run this inside your project's folder:
+
 ```sh
 npx github:koshhi/mock-creator init
 ```
 
-Locally, from a cloned copy of this repo:
-
-```sh
-node path/to/mock-creator/bin/init.mjs init
-```
-
-Or, once packed:
-
-```sh
-npm pack   # produces mock-creator-mock-creator-<version>.tgz
-npx ./mock-creator-mock-creator-<version>.tgz init
-```
+That's it — it writes everything you need straight into your project. No
+extra setup, nothing else to run first.
 
 ## Usage
 
 ### Commands
 
-- **`init`** — writes the contract, adapters, and validator into the current
-  directory. A fresh install (nothing exists yet) writes everything
-  immediately. If anything already exists, it defaults to a dry run: shows
-  what it would create, what's already identical, and a diff for anything
-  that's diverged — and writes nothing until you re-run with `--write`.
-  `--write` only creates missing files; it never touches one that already
-  exists, identical or diverged.
-- **`init --adapters claude,codex,pi`** — only install the files a given set
-  of AI coding tools needs, instead of everything: `claude` for Claude Code,
-  `codex` for the OpenAI Codex CLI, `pi` for Pi. `AGENTS.md` is shared by
-  `codex` and `pi` (both discover it) and only gets written once even if both
-  are requested.
-- **`check-install`** — reads the digests `init` recorded in
-  `ai/mock-creator/VERSION.json` and reports each installed file as
-  unchanged, drifted (edited locally since install), outdated (the
-  package's own template moved on since install), or missing.
+| Command | What it does |
+| --- | --- |
+| `init` | Writes the contract, adapters, and validator into the current directory. A fresh install (nothing exists yet) writes everything immediately. If anything already exists, it defaults to a dry run — shows what it would create, what's already identical, and a diff for anything diverged — and writes nothing until you re-run with `--write`. `--write` only creates missing files; it never touches one that already exists, identical or diverged. |
+| `init --adapters claude,codex,pi` | Only installs the files a given set of AI coding tools needs, instead of everything: `claude` for Claude Code, `codex` for the OpenAI Codex CLI, `pi` for Pi. `AGENTS.md` is shared by `codex` and `pi` (both discover it) and is written once even if both are requested. |
+| `check-install` | Reads the digests `init` recorded in `ai/mock-creator/VERSION.json` and reports each installed file as unchanged, drifted (edited locally since install), outdated (the package's own template moved on since install), or missing. |
 
 ### What gets installed
 
@@ -169,6 +150,17 @@ at the prototype root, an `api/` or `server/` directory under `src/`, or
 `states.json` missing the happy/empty/error/loading state for any fixture it
 finds. Pagination is contract guidance — `check.mjs` doesn't enforce it
 automatically yet.
+
+## Developing this package
+
+These two are for testing changes to mock-creator itself, not for installing
+it in a project — most people will never need them:
+
+- From a cloned copy of this repo: `node path/to/mock-creator/bin/init.mjs
+  init`.
+- From a packed tarball, to check what the real published package would do:
+  `npm pack` produces `mock-creator-mock-creator-<version>.tgz`, then
+  `npx ./mock-creator-mock-creator-<version>.tgz init` installs from it.
 
 ## License
 
