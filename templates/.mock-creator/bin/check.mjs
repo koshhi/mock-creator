@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Dependency-free mock-create validator. Run from a prototype's own
 // directory (npm sets cwd to wherever package.json lives), scans that
-// directory only. See /ai/mock-creator/CONTRACT.md for the rules this enforces.
+// directory only. See /.mock-creator/CONTRACT.md for the rules this enforces.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'

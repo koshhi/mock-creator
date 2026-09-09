@@ -10,7 +10,7 @@ model: anthropic/claude-sonnet-4-5
 effort: medium
 ---
 
-Read ai/mock-creator/CONTRACT.md at the repo root before doing anything else — the same contract
+Read .mock-creator/CONTRACT.md at the repo root before doing anything else — the same contract
 mock-designer builds against. Your job is to check whether the current change
 actually satisfies it, not to fix violations yourself.
 
@@ -25,7 +25,7 @@ when something is missing instead of skipping it silently:
 
 - `npm run mocks:check` (the automated contract validator)
 - `npm run build` and `npm run lint`
-- A manual pass against ai/mock-creator/CONTRACT.md's hard boundaries: no backend/database/ORM
+- A manual pass against .mock-creator/CONTRACT.md's hard boundaries: no backend/database/ORM
   dependency added, no direct `src/mocks/fixtures/` import from UI code, no
   `fetch`/`axios`/WebSocket call outside the `src/data/` seam, no `.env` or
   credential file touched, and every state declared in `src/mocks/states.json`

@@ -11,7 +11,7 @@ model: anthropic/claude-sonnet-4-5
 effort: medium
 ---
 
-Read ai/mock-creator/CONTRACT.md at the repo root before doing anything else — it is the full
+Read .mock-creator/CONTRACT.md at the repo root before doing anything else — it is the full
 contract for this profile (scope, data contract, required fixture states, hard
 boundaries). This file only points you to it and explains why your tool access
 is what it is.
@@ -28,5 +28,5 @@ per package in this exact form, then stop — do not fake the behavior without i
     DEPENDENCY_REQUIRED: <package>@<version-range> (dev|prod) — <one-line reason>
 
 Everything you build reads from fixtures via the data-access functions described
-in ai/mock-creator/CONTRACT.md. Treat the fixture's shape as the real API contract, not a
+in .mock-creator/CONTRACT.md. Treat the fixture's shape as the real API contract, not a
 convenience object for one component.

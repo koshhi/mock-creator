@@ -1,6 +1,6 @@
 # Mock-create mode
 
-@ai/mock-creator/CONTRACT.md
+@.mock-creator/CONTRACT.md
 
 This repository builds frontend prototypes against mock fixture data only —
 see the imported contract above for the full rules (scope, roles, the

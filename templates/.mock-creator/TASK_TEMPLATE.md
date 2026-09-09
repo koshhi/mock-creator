@@ -5,7 +5,7 @@ tool without a named custom-agent format):
 
 ---
 
-Mock-create task. Read `ai/mock-creator/CONTRACT.md` at the repo root and
+Mock-create task. Read `.mock-creator/CONTRACT.md` at the repo root and
 follow `AGENTS.md`. Work only inside `<prototype-directory>/`, through its
 own `src/data/` seam — never import a fixture directly, never add a backend
 dependency, never make a real network call.

@@ -20,7 +20,7 @@ validator that fails the build the moment any of that gets crossed.
 ## Benefits
 
 Every claim below is something you can go verify in
-`ai/mock-creator/CONTRACT.md` or `bin/check.mjs` — no invented numbers, just
+`.mock-creator/CONTRACT.md` or `bin/check.mjs` — no invented numbers, just
 what actually happens when you run it.
 
 ### For designers prototyping with AI
@@ -99,7 +99,8 @@ extra setup, nothing else to run first.
 | --- | --- |
 | `init` | Writes the contract, adapters, and validator into the current directory. A fresh install (nothing exists yet) writes everything immediately. If anything already exists, it defaults to a dry run — shows what it would create, what's already identical, and a diff for anything diverged — and writes nothing until you re-run with `--write`. `--write` only creates missing files; it never touches one that already exists, identical or diverged. |
 | `init --adapters claude,codex,pi` | Only installs the files a given set of AI coding tools needs, instead of everything: `claude` for Claude Code, `codex` for the OpenAI Codex CLI, `pi` for Pi. `AGENTS.md` is shared by `codex` and `pi` (both discover it) and is written once even if both are requested. |
-| `check-install` | Reads the digests `init` recorded in `ai/mock-creator/VERSION.json` and reports each installed file as unchanged, drifted (edited locally since install), outdated (the package's own template moved on since install), or missing. |
+| `init --merge` | For when `CLAUDE.md` or `AGENTS.md` already exists in your project for some other reason. Without `--merge`, `init` just shows you what it *would* add to that file. With `--merge`, it appends its own block — clearly marked off with `<!-- mock-creator:start -->` / `<!-- mock-creator:end -->` comments — to the end of your existing file, without touching anything else in it. On a later reinstall, if the package's block has moved on, `--merge` updates just that marked block in place, leaving the rest of the file exactly as you left it. |
+| `check-install` | Reads the digests `init` recorded in `.mock-creator/VERSION.json` and reports each installed file as unchanged, drifted (edited locally since install), outdated (the package's own template moved on since install), or missing. |
 
 ### What gets installed
 
@@ -110,14 +111,14 @@ CLAUDE.md
 .claude/agents/mock-verifier.md
 .pi/agents/mock-designer.md
 .pi/agents/mock-verifier.md
-ai/mock-creator/
+.mock-creator/
 ├── CONTRACT.md
 ├── VERSION.json
 ├── TASK_TEMPLATE.md
 └── bin/check.mjs
 ```
 
-Read `ai/mock-creator/CONTRACT.md` after installing — it's the operative
+Read `.mock-creator/CONTRACT.md` after installing — it's the operative
 document every agent file points back to. Short version:
 
 - **Data contract**: every resource needs a schema (`src/mocks/schemas/`), a
@@ -133,12 +134,12 @@ document every agent file points back to. Short version:
 ### Wiring the validator
 
 Add this to each prototype's own `package.json` (adjusting the relative path
-to `ai/mock-creator/bin/check.mjs`), then run it from inside that prototype's
+to `.mock-creator/bin/check.mjs`), then run it from inside that prototype's
 own directory before treating a change as done:
 
 ```json
 "scripts": {
-  "mocks:check": "node ai/mock-creator/bin/check.mjs"
+  "mocks:check": "node .mock-creator/bin/check.mjs"
 }
 ```
 
