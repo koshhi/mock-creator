@@ -7,7 +7,7 @@ tool-specific adapters (Claude Code, Codex, Pi), and a dependency-free
 validator — so an AI agent can build a UI prototype without ever drifting
 into real backend work.
 
-## Why
+## Why this tool
 
 An AI coding agent building a frontend prototype will happily wire up a real
 database, call a real API, or reach for a real `.env` file if the
@@ -21,7 +21,8 @@ It's meant to sit inside a project, not take it over: `init --merge` lets
 its block live inside an `AGENTS.md`/`CLAUDE.md` a project already has,
 without touching anything else in that file.
 
-## Benefits
+<details>
+<summary><strong>Benefits</strong> — for designers, frontend engineers, backend engineers, and the process itself</summary>
 
 Every claim below is something you can go verify in
 `.mock-creator/CONTRACT.md` or `bin/check.mjs` — no invented numbers, just
@@ -83,6 +84,8 @@ what actually happens when you run it.
   `mock-designer` has no `Bash` and no install access — every new dependency
   surfaces as an explicit `DEPENDENCY_REQUIRED` line someone has to approve,
   so `package.json` never changes quietly.
+
+</details>
 
 ## Installation
 

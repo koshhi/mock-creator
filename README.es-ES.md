@@ -7,7 +7,7 @@ adaptadores por herramienta (Claude Code, Codex, Pi), y un validador sin
 dependencias — para que un agente de IA pueda construir un prototipo de UI
 sin desviarse nunca hacia trabajo real de backend.
 
-## Por qué
+## Por qué esta herramienta
 
 Un agente de IA que construye un prototipo frontend, si la conversación se
 lo permite, conectará sin problema una base de datos real, llamará a una API
@@ -22,7 +22,8 @@ Está pensado para convivir dentro de un proyecto, no para adueñarse de él:
 `init --merge` deja que su bloque viva dentro de un `AGENTS.md`/`CLAUDE.md`
 que el proyecto ya tenía, sin tocar nada más de ese archivo.
 
-## Beneficios
+<details>
+<summary><strong>Beneficios</strong> — para diseñadores, desarrolladores de frontend, de backend, y para el propio proceso</summary>
 
 Cada afirmación de abajo se puede verificar en `.mock-creator/CONTRACT.md`
 o `bin/check.mjs` — sin cifras inventadas, solo lo que realmente ocurre al
@@ -92,6 +93,8 @@ ejecutarlo.
   dependencia nueva aparece como una línea explícita `DEPENDENCY_REQUIRED`
   que alguien tiene que aprobar, así que `package.json` nunca cambia en
   silencio.
+
+</details>
 
 ## Instalación
 
