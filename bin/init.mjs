@@ -485,12 +485,31 @@ async function runInteractiveInit(argv) {
   // handler — or none — is attached.
   const keypressQueue = []
   const keypressWaiters = []
-  process.stdin.on('keypress', (str, key) => {
+  function onKeypress(str, key) {
     if (keypressWaiters.length) keypressWaiters.shift()({ str, key })
     else keypressQueue.push({ str, key })
-  })
+  }
+  process.stdin.on('keypress', onKeypress)
 
+  // Covers the non-TTY/piped case (including the force-interactive test
+  // hook): if the input stream ends while something is still waiting on a
+  // keypress that hasn't arrived, there's no more input coming — abort
+  // cleanly instead of hanging.
+  function onEnd() {
+    if (keypressWaiters.length) abort()
+  }
+  process.stdin.on('end', onEnd)
+
+  // emitKeypressEvents has no public teardown — its own internal 'data'
+  // listener stays on the stream for good, which alone is enough to keep
+  // the process alive waiting on stdin forever. Removing our listeners is
+  // necessary but not sufficient: pause() is what actually lets a TTY
+  // stdin stop holding the event loop open once we're done with it. Without
+  // this, the process printed its summary and then just sat there until
+  // Ctrl-C — this exact bug shipped once already; don't reintroduce it.
   function restoreTerminal() {
+    process.stdin.removeListener('keypress', onKeypress)
+    process.stdin.removeListener('end', onEnd)
     if (isRealTTY) {
       try {
         process.stdin.setRawMode(false)
@@ -498,6 +517,7 @@ async function runInteractiveInit(argv) {
         // best effort
       }
     }
+    process.stdin.pause()
   }
 
   let aborted = false
@@ -508,13 +528,6 @@ async function runInteractiveInit(argv) {
     console.error('\nAborted.')
     process.exit(130)
   }
-  // Covers the non-TTY/piped case (including the force-interactive test
-  // hook): if the input stream ends while something is still waiting on a
-  // keypress that hasn't arrived, there's no more input coming — abort
-  // cleanly instead of hanging.
-  process.stdin.on('end', () => {
-    if (keypressWaiters.length) abort()
-  })
 
   // Pulls the next keypress, queued or not yet arrived — either way, exactly
   // one at a time, in arrival order. Ctrl-C/Ctrl-D abort here, once, so
