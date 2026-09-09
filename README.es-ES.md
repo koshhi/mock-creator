@@ -18,6 +18,10 @@ instalar una dependencia — y solo después de que un humano la aprueba), una
 forma fija para los datos simulados, y un validador que hace fallar el build
 en el momento en que se cruza cualquiera de esos límites.
 
+Está pensado para convivir dentro de un proyecto, no para adueñarse de él:
+`init --merge` deja que su bloque viva dentro de un `AGENTS.md`/`CLAUDE.md`
+que el proyecto ya tenía, sin tocar nada más de ese archivo.
+
 ## Beneficios
 
 Cada afirmación de abajo se puede verificar en `.mock-creator/CONTRACT.md`
@@ -109,6 +113,7 @@ hace falta ninguna configuración previa ni ningún otro paso.
 | `init` | Escribe el contrato, los adaptadores y el validador en el directorio actual. Una instalación nueva (nada existe todavía) escribe todo de inmediato. Si ya existe algo, por defecto hace un dry run — muestra qué crearía, qué ya es idéntico, y un diff de lo que ha divergido — y no escribe nada hasta que se ejecute de nuevo con `--write`. `--write` solo crea los archivos que faltan; nunca modifica uno que ya existe, sea idéntico o haya divergido. |
 | `init --adapters claude,codex,pi` | Instala solo los archivos que necesita un conjunto dado de herramientas de IA, en vez de todo: `claude` para Claude Code, `codex` para la CLI de OpenAI Codex, `pi` para Pi. `AGENTS.md` es compartido por `codex` y `pi` (ambos lo descubren) y se escribe una sola vez aunque se pidan los dos. |
 | `init --merge` | Para cuando `CLAUDE.md` o `AGENTS.md` ya existen en tu proyecto por otro motivo. Sin `--merge`, `init` solo muestra lo que *añadiría* a ese archivo. Con `--merge`, añade su propio bloque —delimitado con claridad mediante los comentarios `<!-- mock-creator:start -->` / `<!-- mock-creator:end -->`— al final de tu archivo existente, sin tocar nada más de él. En una reinstalación posterior, si el bloque del paquete ha cambiado, `--merge` actualiza solo ese bloque marcado, dejando el resto del archivo exactamente como lo dejaste. |
+| `init --interactive` (o `-i`) | Te guía por las mismas decisiones en lugar de obligarte a repetir comandos con distintas flags. Pregunta qué herramientas de IA usas e instala solo lo que esas necesitan, y luego, para cada `CLAUDE.md`/`AGENTS.md` que ya exista, pregunta si quieres añadir (o actualizar) el bloque de mock-creator ahí mismo. Si respondes que no, lo imprime para que lo pegues tú a mano —no se escribe nada en ese archivo—. Requiere una terminal interactiva real; si se ejecuta sin ella, simplemente cae de vuelta al dry run normal. |
 | `check-install` | Lee los digests que `init` registró en `.mock-creator/VERSION.json` y reporta cada archivo instalado como sin cambios, con deriva (editado localmente desde la instalación), desactualizado (la plantilla del propio paquete ha avanzado desde la instalación), o faltante. |
 
 ### Qué se instala

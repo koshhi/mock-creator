@@ -27,6 +27,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkS
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { dirname, join, relative } from 'node:path'
+import { createInterface } from 'node:readline/promises'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -164,7 +165,11 @@ function syncVersionFile(writtenRels) {
   writeFileSync(versionPath, JSON.stringify(installed, null, 2) + '\n')
 }
 
-function resolveAdapters(adaptersFlagValue) {
+// exitOnError defaults to true (the original CLI-flag-validation behavior).
+// --interactive's reprompt loop passes { exitOnError: false } so a bad
+// answer can be re-asked instead of killing the process; it's told apart
+// from the "no filter" `null` result by getting `undefined` back instead.
+function resolveAdapters(adaptersFlagValue, { exitOnError = true } = {}) {
   if (!adaptersFlagValue) return null // null = no filter, everything
   const requested = adaptersFlagValue.split(',').map((s) => s.trim()).filter(Boolean)
   const unknown = requested.filter((name) => !(name in ADAPTER_FILES))
@@ -172,7 +177,8 @@ function resolveAdapters(adaptersFlagValue) {
     console.error(
       `Unknown adapter(s): ${unknown.join(', ')}\nValid adapters: ${Object.keys(ADAPTER_FILES).join(', ')}`,
     )
-    process.exit(1)
+    if (exitOnError) process.exit(1)
+    return undefined
   }
   const selected = new Set(CORE_FILES)
   for (const name of requested) {
@@ -205,21 +211,17 @@ function printBlock(block) {
   for (const line of lines) console.log(`    ${line}`)
 }
 
-function runInit(argv) {
-  const write = argv.includes('--write')
-  const merge = argv.includes('--merge')
-  const adaptersFlagIndex = argv.indexOf('--adapters')
-  const adaptersFlagValue = adaptersFlagIndex === -1 ? null : argv[adaptersFlagIndex + 1]
-  const selectedFiles = resolveAdapters(adaptersFlagValue)
-
-  const allTemplateFiles = listTemplateFiles(templatesRoot).concat(VERSION_FILE)
-  const filesToProcess = selectedFiles ? allTemplateFiles.filter((f) => selectedFiles.has(f)) : allTemplateFiles
-
+// Categorizes every template file (already filtered down to the selected
+// adapters) relative to the target directory. Shared by the non-interactive
+// dry-run/--write/--merge path and the --interactive path so both compute
+// identical toCreate/identical/diverged/mergeable/outdatedBlock results for
+// the same selected files.
+function categorizeFiles(filesToProcess) {
   const toCreate = []
   const identical = []
   const diverged = []
   const mergeable = [] // { rel, block }
-  const outdatedBlock = [] // { rel, extracted, templateContent }
+  const outdatedBlock = [] // { rel, extracted, templateContent, destContent }
 
   for (const rel of filesToProcess) {
     const dest = join(targetRoot, rel)
@@ -248,26 +250,49 @@ function runInit(argv) {
     ;(same ? identical : diverged).push(rel)
   }
 
+  return { toCreate, identical, diverged, mergeable, outdatedBlock }
+}
+
+function writeMissingFiles(toCreate, filesToProcess) {
+  for (const rel of toCreate) {
+    const dest = join(targetRoot, rel)
+    mkdirSync(dirname(dest), { recursive: true })
+    if (rel === VERSION_FILE) writeFileSync(dest, getSrcContent(rel, filesToProcess))
+    else if (MERGE_FILES.has(rel)) writeFileSync(dest, wrapBlock(getSrcContent(rel, filesToProcess)))
+    else copyFileSync(join(templatesRoot, rel), dest)
+  }
+}
+
+function applyMergeFiles(mergeable, outdatedBlock) {
+  for (const { rel, block } of mergeable) {
+    const dest = join(targetRoot, rel)
+    const existingContent = readFileSync(dest, 'utf8')
+    writeFileSync(dest, appendBlock(existingContent, block))
+  }
+  for (const { rel, extracted, templateContent, destContent } of outdatedBlock) {
+    const dest = join(targetRoot, rel)
+    writeFileSync(dest, replaceBlock(destContent, extracted, templateContent))
+  }
+}
+
+function runInit(argv) {
+  const write = argv.includes('--write')
+  const merge = argv.includes('--merge')
+  const adaptersFlagIndex = argv.indexOf('--adapters')
+  const adaptersFlagValue = adaptersFlagIndex === -1 ? null : argv[adaptersFlagIndex + 1]
+  const selectedFiles = resolveAdapters(adaptersFlagValue)
+
+  const allTemplateFiles = listTemplateFiles(templatesRoot).concat(VERSION_FILE)
+  const filesToProcess = selectedFiles ? allTemplateFiles.filter((f) => selectedFiles.has(f)) : allTemplateFiles
+
+  const { toCreate, identical, diverged, mergeable, outdatedBlock } = categorizeFiles(filesToProcess)
+
   function writeMissing() {
-    for (const rel of toCreate) {
-      const dest = join(targetRoot, rel)
-      mkdirSync(dirname(dest), { recursive: true })
-      if (rel === VERSION_FILE) writeFileSync(dest, getSrcContent(rel, filesToProcess))
-      else if (MERGE_FILES.has(rel)) writeFileSync(dest, wrapBlock(getSrcContent(rel, filesToProcess)))
-      else copyFileSync(join(templatesRoot, rel), dest)
-    }
+    writeMissingFiles(toCreate, filesToProcess)
   }
 
   function applyMerge() {
-    for (const { rel, block } of mergeable) {
-      const dest = join(targetRoot, rel)
-      const existingContent = readFileSync(dest, 'utf8')
-      writeFileSync(dest, appendBlock(existingContent, block))
-    }
-    for (const { rel, extracted, templateContent, destContent } of outdatedBlock) {
-      const dest = join(targetRoot, rel)
-      writeFileSync(dest, replaceBlock(destContent, extracted, templateContent))
-    }
+    applyMergeFiles(mergeable, outdatedBlock)
   }
 
   const hasConflicts =
@@ -365,6 +390,159 @@ function runInit(argv) {
   if (diverged.length) {
     console.log('\nDiverged (left untouched — review by hand):')
     for (const f of diverged) console.log(`  ! ${f}`)
+  }
+}
+
+// --interactive/-i walks the user through the same decisions --write/--merge
+// make blindly: which adapters to install, and per mergeable/outdated file
+// whether to touch it. This is opt-in only (never auto-detected from a TTY)
+// so a scripted/agent caller's behavior can never change by surprise — see
+// the isTTY guard below for the other half of that guarantee.
+async function runInteractiveInit(argv) {
+  // MOCK_CREATOR_FORCE_INTERACTIVE=1 is an internal testing hook, not
+  // documented for end users: piped stdin normally reports isTTY: false, so
+  // this lets a test still drive the prompts below via scripted stdin.
+  const forceInteractive = process.env.MOCK_CREATOR_FORCE_INTERACTIVE === '1'
+  if (!process.stdin.isTTY && !forceInteractive) {
+    console.log('--interactive requires an interactive terminal — falling back to the normal dry run.')
+    runInit(argv.filter((a) => a !== '--interactive' && a !== '-i'))
+    return
+  }
+
+  const adaptersFlagIndex = argv.indexOf('--adapters')
+  const adaptersExplicit = adaptersFlagIndex !== -1
+  const adaptersFlagValue = adaptersExplicit ? argv[adaptersFlagIndex + 1] : null
+
+  if (argv.includes('--write') || argv.includes('--merge')) {
+    console.log(
+      'Note: --write/--merge are ignored with --interactive — the prompts below decide what gets written.\n',
+    )
+  }
+
+  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  // rl.question() adds a one-shot 'line' listener per call. If several
+  // answers arrive in one stdin chunk (as they do with fast piped input —
+  // the exact way the escape hatch above is used for testing), readline
+  // emits all buffered lines synchronously and any line with no listener
+  // attached at that instant is silently dropped before the next
+  // rl.question() call gets a chance to listen for it. Registering a single
+  // persistent 'line' listener up front and pulling from our own queue
+  // avoids that loss regardless of how fast the input arrives.
+  const lineBuffer = []
+  const lineWaiters = []
+  let inputClosed = false
+  rl.on('line', (line) => {
+    if (lineWaiters.length) lineWaiters.shift().resolve(line)
+    else lineBuffer.push(line)
+  })
+  // If stdin closes while a prompt is pending (e.g. Ctrl-D, or the piped
+  // input simply runs out), don't leave the process hanging forever on an
+  // unresolved promise — reject it so the top-level .catch can report a
+  // clean error and exit instead of an invisible hang.
+  rl.on('close', () => {
+    inputClosed = true
+    while (lineWaiters.length) {
+      lineWaiters.shift().reject(new Error('Input closed before an answer was given.'))
+    }
+  })
+  function nextLine() {
+    if (lineBuffer.length) return Promise.resolve(lineBuffer.shift())
+    if (inputClosed) return Promise.reject(new Error('Input closed before an answer was given.'))
+    return new Promise((resolve, reject) => lineWaiters.push({ resolve, reject }))
+  }
+  async function prompt(text) {
+    process.stdout.write(text)
+    return nextLine()
+  }
+  try {
+    let selectedFiles = adaptersExplicit ? resolveAdapters(adaptersFlagValue) : null
+    if (!adaptersExplicit) {
+      for (;;) {
+        const answer = await prompt(
+          'Which AI coding tools do you use in this project? (claude, codex, pi — comma-separated, or press enter for all): ',
+        )
+        const trimmed = answer.trim()
+        if (!trimmed) {
+          selectedFiles = null
+          break
+        }
+        const result = resolveAdapters(trimmed, { exitOnError: false })
+        if (result === undefined) continue // invalid — resolveAdapters already printed why; re-prompt
+        selectedFiles = result
+        break
+      }
+    }
+
+    const allTemplateFiles = listTemplateFiles(templatesRoot).concat(VERSION_FILE)
+    const filesToProcess = selectedFiles ? allTemplateFiles.filter((f) => selectedFiles.has(f)) : allTemplateFiles
+
+    const { toCreate, diverged, mergeable, outdatedBlock } = categorizeFiles(filesToProcess)
+
+    // Nothing to lose by writing files that didn't exist before — no prompt.
+    writeMissingFiles(toCreate, filesToProcess)
+
+    const appended = []
+    const updated = []
+    const leftForManualCopy = []
+
+    for (const { rel, block } of mergeable) {
+      printBlock(block)
+      const answer = await prompt(`Append this block to ${rel}? (y/N): `)
+      if (/^y/i.test(answer.trim())) {
+        const dest = join(targetRoot, rel)
+        const existingContent = readFileSync(dest, 'utf8')
+        writeFileSync(dest, appendBlock(existingContent, block))
+        appended.push(rel)
+      } else {
+        console.log(`\nNot touching ${rel}. Copy this into it yourself:\n`)
+        printBlock(block)
+        leftForManualCopy.push(rel)
+      }
+    }
+
+    for (const { rel, extracted, templateContent, destContent } of outdatedBlock) {
+      const newBlock = wrapBlock(templateContent)
+      printBlock(newBlock)
+      const answer = await prompt(`Update the mock-creator block in ${rel}? (y/N): `)
+      if (/^y/i.test(answer.trim())) {
+        const dest = join(targetRoot, rel)
+        writeFileSync(dest, replaceBlock(destContent, extracted, templateContent))
+        updated.push(rel)
+      } else {
+        console.log(`\nNot touching ${rel}. Copy this into it yourself:\n`)
+        printBlock(newBlock)
+        leftForManualCopy.push(rel)
+      }
+    }
+
+    // Only paths actually written this run may have their recorded digest
+    // updated — files left for manual copy weren't touched on disk, so their
+    // digest must not move either (see syncVersionFile's own comment).
+    syncVersionFile([...toCreate, ...appended, ...updated])
+
+    console.log('\nmock-creator init --interactive: done.\n')
+    if (toCreate.length) {
+      console.log('Written:')
+      for (const f of toCreate) console.log(`  + ${f}`)
+    }
+    if (appended.length) {
+      console.log('\nAppended:')
+      for (const f of appended) console.log(`  ~ ${f}`)
+    }
+    if (updated.length) {
+      console.log('\nBlock updated:')
+      for (const f of updated) console.log(`  ^ ${f}`)
+    }
+    if (leftForManualCopy.length) {
+      console.log('\nLeft for manual copy (see above):')
+      for (const f of leftForManualCopy) console.log(`  ? ${f}`)
+    }
+    if (diverged.length) {
+      console.log('\nDiverged (never touched):')
+      for (const f of diverged) console.log(`  ! ${f}`)
+    }
+  } finally {
+    rl.close()
   }
 }
 
@@ -466,13 +644,21 @@ const argv = process.argv.slice(2)
 const command = argv[0]
 
 if (command === 'init') {
-  runInit(argv.slice(1))
+  const initArgv = argv.slice(1)
+  if (initArgv.includes('--interactive') || initArgv.includes('-i')) {
+    runInteractiveInit(initArgv).catch((err) => {
+      console.error(err)
+      process.exitCode = 1
+    })
+  } else {
+    runInit(initArgv)
+  }
 } else if (command === 'check-install') {
   runCheckInstall()
 } else {
   console.error(
     `Unknown command: ${command ?? '(none)'}\n\nUsage:\n` +
-      '  mock-creator init [--adapters claude,codex,pi] [--write] [--merge]\n' +
+      '  mock-creator init [--adapters claude,codex,pi] [--write] [--merge] [--interactive|-i]\n' +
       '  mock-creator check-install',
   )
   process.exit(1)
