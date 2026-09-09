@@ -27,8 +27,23 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, unlinkS
 import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { dirname, join, relative } from 'node:path'
-import { createInterface } from 'node:readline/promises'
+import { emitKeypressEvents } from 'node:readline'
 import { fileURLToPath } from 'node:url'
+
+// Safety net: if the checkbox prompt (or anything else) left the TTY in raw
+// mode when the process exits — a bug, an uncaught throw, whatever — put it
+// back into normal line-buffered mode rather than leaving the user's shell
+// broken. Cheap insurance; a no-op on every clean exit path since those
+// already restore raw mode themselves.
+process.on('exit', () => {
+  if (process.stdin.isTTY && process.stdin.isRaw) {
+    try {
+      process.stdin.setRawMode(false)
+    } catch {
+      // best effort
+    }
+  }
+})
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const templatesRoot = join(__dirname, '..', 'templates')
@@ -50,8 +65,8 @@ const CORE_FILES = [
 // not duplicated — requesting either pulls it in once.
 const ADAPTER_FILES = {
   claude: ['CLAUDE.md', '.claude/agents/mock-designer.md', '.claude/agents/mock-verifier.md'],
-  pi: ['AGENTS.md', '.pi/agents/mock-designer.md', '.pi/agents/mock-verifier.md'],
   codex: ['AGENTS.md'],
+  pi: ['AGENTS.md', '.pi/agents/mock-designer.md', '.pi/agents/mock-verifier.md'],
 }
 
 // The only two files that get wrapped in mock-creator markers and can be
@@ -165,6 +180,19 @@ function syncVersionFile(writtenRels) {
   writeFileSync(versionPath, JSON.stringify(installed, null, 2) + '\n')
 }
 
+// Expands a list of already-validated adapter names (e.g. ['claude', 'pi'])
+// into the full Set of relative file paths to install, seeded with the files
+// every install needs regardless of adapter choice. Shared by resolveAdapters
+// (string-parsing path, used for the --adapters flag) and the --interactive
+// checkbox path (already has valid names, nothing left to parse or validate).
+function expandAdapterNames(names) {
+  const selected = new Set(CORE_FILES)
+  for (const name of names) {
+    for (const f of ADAPTER_FILES[name]) selected.add(f)
+  }
+  return selected
+}
+
 // exitOnError defaults to true (the original CLI-flag-validation behavior).
 // --interactive's reprompt loop passes { exitOnError: false } so a bad
 // answer can be re-asked instead of killing the process; it's told apart
@@ -180,11 +208,7 @@ function resolveAdapters(adaptersFlagValue, { exitOnError = true } = {}) {
     if (exitOnError) process.exit(1)
     return undefined
   }
-  const selected = new Set(CORE_FILES)
-  for (const name of requested) {
-    for (const f of ADAPTER_FILES[name]) selected.add(f)
-  }
-  return selected
+  return expandAdapterNames(requested)
 }
 
 function printDiff(rel, srcContent) {
@@ -398,6 +422,23 @@ function runInit(argv) {
 // whether to touch it. This is opt-in only (never auto-detected from a TTY)
 // so a scripted/agent caller's behavior can never change by surprise — see
 // the isTTY guard below for the other half of that guarantee.
+//
+// Every phase of this function — the adapter checkbox, then each y/N
+// merge-confirmation prompt — reads from process.stdin through exactly one
+// persistent 'keypress' listener, installed once at the top and torn down
+// once at the very end. Earlier this was two separate mechanisms (a
+// checkbox with its own listener, handed off afterward to a fresh
+// readline/promises Interface for the y/N prompts), and that handoff had a
+// real bug: if the user's next answer arrived in the *same* stdin chunk as
+// the key that ended the checkbox (a plausible paste, not just a fast-piped
+// test), those extra bytes got decoded into keypress events and silently
+// dropped — the checkbox's listener had already been removed, and the new
+// Interface didn't exist yet to catch them. With one listener that's swapped
+// synchronously (`currentHandler = ...`) the instant a phase ends — before
+// control returns to emit whatever keypress event queued up right after it
+// in the same chunk — nothing in that gap can be lost, because there is no
+// gap: the same physical listener dispatches every keypress, in order, to
+// whichever handler is current at that exact instant.
 async function runInteractiveInit(argv) {
   // MOCK_CREATOR_FORCE_INTERACTIVE=1 is an internal testing hook, not
   // documented for end users: piped stdin normally reports isTTY: false, so
@@ -419,58 +460,169 @@ async function runInteractiveInit(argv) {
     )
   }
 
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
-  // rl.question() adds a one-shot 'line' listener per call. If several
-  // answers arrive in one stdin chunk (as they do with fast piped input —
-  // the exact way the escape hatch above is used for testing), readline
-  // emits all buffered lines synchronously and any line with no listener
-  // attached at that instant is silently dropped before the next
-  // rl.question() call gets a chance to listen for it. Registering a single
-  // persistent 'line' listener up front and pulling from our own queue
-  // avoids that loss regardless of how fast the input arrives.
-  const lineBuffer = []
-  const lineWaiters = []
-  let inputClosed = false
-  rl.on('line', (line) => {
-    if (lineWaiters.length) lineWaiters.shift().resolve(line)
-    else lineBuffer.push(line)
-  })
-  // If stdin closes while a prompt is pending (e.g. Ctrl-D, or the piped
-  // input simply runs out), don't leave the process hanging forever on an
-  // unresolved promise — reject it so the top-level .catch can report a
-  // clean error and exit instead of an invisible hang.
-  rl.on('close', () => {
-    inputClosed = true
-    while (lineWaiters.length) {
-      lineWaiters.shift().reject(new Error('Input closed before an answer was given.'))
+  const isRealTTY = Boolean(process.stdin.isTTY)
+  emitKeypressEvents(process.stdin)
+  if (isRealTTY) {
+    try {
+      process.stdin.setRawMode(true)
+    } catch {
+      // best effort
     }
+  }
+
+  // Every keypress, from either phase (the checkbox, or a y/N line prompt),
+  // goes into one queue — unconditionally, the instant it's decoded, never
+  // dropped. A resolve-then-await-the-next-phase handoff isn't good enough
+  // here: resolving a Promise only *schedules* its continuation as a
+  // microtask, so if the user's next answer arrives in the very same stdin
+  // chunk as the key that ends the current phase, emitKeypressEvents keeps
+  // dispatching those extra keypresses synchronously, in the same tick,
+  // before that microtask ever runs — so a "swap which callback is
+  // listening" approach still has a real gap where a same-chunk keypress
+  // has nothing correct to land on. Queuing first and only *consuming* one
+  // at a time (via nextKeypress, awaited) sidesteps that entirely: nothing
+  // is ever dispatched to a handler, so there's no window where the wrong
+  // handler — or none — is attached.
+  const keypressQueue = []
+  const keypressWaiters = []
+  process.stdin.on('keypress', (str, key) => {
+    if (keypressWaiters.length) keypressWaiters.shift()({ str, key })
+    else keypressQueue.push({ str, key })
   })
-  function nextLine() {
-    if (lineBuffer.length) return Promise.resolve(lineBuffer.shift())
-    if (inputClosed) return Promise.reject(new Error('Input closed before an answer was given.'))
-    return new Promise((resolve, reject) => lineWaiters.push({ resolve, reject }))
-  }
-  async function prompt(text) {
-    process.stdout.write(text)
-    return nextLine()
-  }
-  try {
-    let selectedFiles = adaptersExplicit ? resolveAdapters(adaptersFlagValue) : null
-    if (!adaptersExplicit) {
-      for (;;) {
-        const answer = await prompt(
-          'Which AI coding tools do you use in this project? (claude, codex, pi — comma-separated, or press enter for all): ',
-        )
-        const trimmed = answer.trim()
-        if (!trimmed) {
-          selectedFiles = null
-          break
-        }
-        const result = resolveAdapters(trimmed, { exitOnError: false })
-        if (result === undefined) continue // invalid — resolveAdapters already printed why; re-prompt
-        selectedFiles = result
-        break
+
+  function restoreTerminal() {
+    if (isRealTTY) {
+      try {
+        process.stdin.setRawMode(false)
+      } catch {
+        // best effort
       }
+    }
+  }
+
+  let aborted = false
+  function abort() {
+    if (aborted) return
+    aborted = true
+    restoreTerminal()
+    console.error('\nAborted.')
+    process.exit(130)
+  }
+  // Covers the non-TTY/piped case (including the force-interactive test
+  // hook): if the input stream ends while something is still waiting on a
+  // keypress that hasn't arrived, there's no more input coming — abort
+  // cleanly instead of hanging.
+  process.stdin.on('end', () => {
+    if (keypressWaiters.length) abort()
+  })
+
+  // Pulls the next keypress, queued or not yet arrived — either way, exactly
+  // one at a time, in arrival order. Ctrl-C/Ctrl-D abort here, once, so
+  // neither caller below needs to check for them itself.
+  async function nextKeypress() {
+    const kp = keypressQueue.length ? keypressQueue.shift() : await new Promise((resolve) => keypressWaiters.push(resolve))
+    if (kp.str === '\x03' || kp.str === '\x04') abort() // never returns
+    return kp
+  }
+
+  // Arrow-key checkbox for picking adapters, used when --adapters wasn't
+  // passed explicitly. All three start checked (same default as the old
+  // "blank = all" answer). Resolves to the array of checked adapter names —
+  // possibly empty, if the user unchecked all three; that's a legitimate
+  // choice (just the shared contract/validator files, no
+  // CLAUDE.md/AGENTS.md/agent files at all), never forced to include one.
+  async function promptAdapterCheckbox() {
+    const names = Object.keys(ADAPTER_FILES)
+    const checked = new Set(names)
+    let cursor = 0
+
+    console.log('Which AI coding tools do you use in this project?')
+    console.log('(↑/↓ move, space toggle, enter confirm)\n')
+
+    function renderRow(i) {
+      const prefix = i === cursor ? '>' : ' '
+      const mark = checked.has(names[i]) ? 'x' : ' '
+      return `${prefix} [${mark}] ${names[i]}`
+    }
+
+    // Print the item rows once. Only these get redrawn in place afterward —
+    // the header/instructions above are never touched again.
+    for (let i = 0; i < names.length; i++) console.log(renderRow(i))
+
+    function redraw() {
+      process.stdout.write(`\x1b[${names.length}A`)
+      for (let i = 0; i < names.length; i++) {
+        process.stdout.write(`\r\x1b[K${renderRow(i)}\n`)
+      }
+    }
+
+    for (;;) {
+      const { str, key } = await nextKeypress()
+      if (key && key.name === 'up') {
+        cursor = (cursor - 1 + names.length) % names.length
+        redraw()
+        continue
+      }
+      if (key && key.name === 'down') {
+        cursor = (cursor + 1) % names.length
+        redraw()
+        continue
+      }
+      if (str === ' ') {
+        const name = names[cursor]
+        if (checked.has(name)) checked.delete(name)
+        else checked.add(name)
+        redraw()
+        continue
+      }
+      if (str === '\r' || str === '\n' || (key && key.name === 'return')) {
+        return names.filter((n) => checked.has(n))
+      }
+    }
+  }
+
+  // Line-based prompt for the y/N merge questions: accumulates typed
+  // characters (with basic backspace support), echoing them manually since
+  // raw mode disables the terminal's own echo, until Enter. Pulls from the
+  // same nextKeypress() queue as the checkbox above — safe to call right
+  // after it even if the answer arrived in the same input chunk.
+  async function promptLine(question) {
+    process.stdout.write(question)
+    let buf = ''
+    for (;;) {
+      const { str, key } = await nextKeypress()
+      if (str === '\r' || str === '\n' || (key && key.name === 'return')) {
+        process.stdout.write('\n')
+        return buf
+      }
+      if ((key && key.name === 'backspace') || str === '\x7f' || str === '\b') {
+        if (buf.length) {
+          buf = buf.slice(0, -1)
+          process.stdout.write('\b \b')
+        }
+        continue
+      }
+      // Only accumulate plain printable characters — ignore arrow keys and
+      // other escape sequences, which arrive with no usable `str`.
+      if (str && str.length === 1 && str >= ' ' && !key?.ctrl && !key?.meta) {
+        buf += str
+        process.stdout.write(str)
+      }
+    }
+  }
+
+  try {
+    let selectedFiles
+    if (adaptersExplicit) {
+      selectedFiles = resolveAdapters(adaptersFlagValue)
+    } else {
+      const chosenNames = await promptAdapterCheckbox()
+      selectedFiles = expandAdapterNames(chosenNames)
+      console.log(
+        chosenNames.length
+          ? `Using: ${chosenNames.join(', ')}\n`
+          : 'Using: none (just the shared contract/validator files)\n',
+      )
     }
 
     const allTemplateFiles = listTemplateFiles(templatesRoot).concat(VERSION_FILE)
@@ -485,16 +637,27 @@ async function runInteractiveInit(argv) {
     const updated = []
     const leftForManualCopy = []
 
+    if (mergeable.length || outdatedBlock.length) {
+      console.log(
+        `\n${mergeable.length + outdatedBlock.length} file(s) already exist and need a decision — everything ` +
+          'else was already handled above with no risk of losing anything.',
+      )
+    }
+
     for (const { rel, block } of mergeable) {
+      console.log(
+        `\n${rel} already exists in this project, but it has no mock-creator block yet.\n` +
+          `Here is exactly what would be added to the end of it (nothing else in the file changes):\n`,
+      )
       printBlock(block)
-      const answer = await prompt(`Append this block to ${rel}? (y/N): `)
+      const answer = await promptLine(`\nAppend this block to ${rel}? (y/N): `)
       if (/^y/i.test(answer.trim())) {
         const dest = join(targetRoot, rel)
         const existingContent = readFileSync(dest, 'utf8')
         writeFileSync(dest, appendBlock(existingContent, block))
         appended.push(rel)
       } else {
-        console.log(`\nNot touching ${rel}. Copy this into it yourself:\n`)
+        console.log(`\nOK, not touching ${rel}. Paste this into it yourself whenever you want the block:\n`)
         printBlock(block)
         leftForManualCopy.push(rel)
       }
@@ -502,14 +665,19 @@ async function runInteractiveInit(argv) {
 
     for (const { rel, extracted, templateContent, destContent } of outdatedBlock) {
       const newBlock = wrapBlock(templateContent)
+      console.log(
+        `\n${rel} already has a mock-creator block, but the package's own version of it has moved on ` +
+          `since this was installed.\nHere is the updated block (only the text between the markers changes, ` +
+          `the rest of the file stays exactly as it is):\n`,
+      )
       printBlock(newBlock)
-      const answer = await prompt(`Update the mock-creator block in ${rel}? (y/N): `)
+      const answer = await promptLine(`\nUpdate the mock-creator block in ${rel}? (y/N): `)
       if (/^y/i.test(answer.trim())) {
         const dest = join(targetRoot, rel)
         writeFileSync(dest, replaceBlock(destContent, extracted, templateContent))
         updated.push(rel)
       } else {
-        console.log(`\nNot touching ${rel}. Copy this into it yourself:\n`)
+        console.log(`\nOK, not touching ${rel}. Paste this into it yourself whenever you want the update:\n`)
         printBlock(newBlock)
         leftForManualCopy.push(rel)
       }
@@ -542,7 +710,7 @@ async function runInteractiveInit(argv) {
       for (const f of diverged) console.log(`  ! ${f}`)
     }
   } finally {
-    rl.close()
+    restoreTerminal()
   }
 }
 
